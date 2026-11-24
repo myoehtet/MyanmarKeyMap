@@ -5,23 +5,85 @@ import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.text.InputType
 import android.widget.Toast
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.view.View
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.content.Intent
+import android.content.res.Configuration
+import android.view.Gravity
+import android.view.InputDevice
+import android.hardware.input.InputManager
+import android.os.Handler
+import android.os.Looper
+import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.InputMethod
+import android.os.Build
 
 class MyanmarIme : InputMethodService() {
     private val engine = UnicodeEngine()
     private var myanmar = true
     private var permitted = true
+    private val inputManager by lazy { getSystemService(InputManager::class.java) }
+    private var connected = false
+    private var editing = false
+    private fun hasHardware() = inputManager.inputDeviceIds.any { id ->
+        inputManager.getInputDevice(id)?.let { !it.isVirtual && it.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC } == true
+    }
+    private val listener = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(id: Int) = refreshHardware()
+        override fun onInputDeviceRemoved(id: Int) = refreshHardware()
+        override fun onInputDeviceChanged(id: Int) = refreshHardware()
+    }
+    override fun onCreate() {
+        super.onCreate()
+        connected = hasHardware()
+        inputManager.registerInputDeviceListener(listener, Handler(Looper.getMainLooper()))
+    }
+    override fun onDestroy() {
+        inputManager.unregisterInputDeviceListener(listener)
+        super.onDestroy()
+    }
+    private fun refreshHardware() {
+        val now = hasHardware()
+        if (now == connected) return
+        connected = now
+        finishComposition()
+        if (!now && editing && prefs.getBoolean("return_gboard", true)) switchToGboard()
+    }
+    private fun switchToGboard() {
+        finishComposition()
+        val imm = getSystemService(InputMethodManager::class.java)
+        val gboard = imm.enabledInputMethodList.firstOrNull { it.packageName == "com.google.android.inputmethod.latin" }
+        if (gboard == null) {
+            Toast.makeText(this, "Enable Gboard in keyboard settings", Toast.LENGTH_SHORT).show()
+            imm.showInputMethodPicker()
+            return
+        }
+        try { switchInputMethod(gboard.id) }
+        catch (e: SecurityException) { imm.showInputMethodPicker() }
+        catch (e: IllegalArgumentException) { imm.showInputMethodPicker() }
+    }
     private val consumed = mutableSetOf<Pair<Int,Int>>()
     private fun finishComposition() { currentInputConnection?.finishComposingText(); engine.clear() }
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        editing = true
+        connected = hasHardware()
         engine.clear()
         val type = attribute?.inputType ?: 0
         val cls = type and InputType.TYPE_MASK_CLASS
         val variation = type and InputType.TYPE_MASK_VARIATION
         permitted = cls == InputType.TYPE_CLASS_TEXT && variation !in setOf(InputType.TYPE_TEXT_VARIATION_PASSWORD, InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD, InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS, InputType.TYPE_TEXT_VARIATION_URI)
+        if (!connected && prefs.getBoolean("return_gboard", true)) {
+            Handler(Looper.getMainLooper()).post { if (editing && !hasHardware()) switchToGboard() }
+        }
     }
-    override fun onFinishInput() { finishComposition(); consumed.clear(); super.onFinishInput() }
+    override fun onFinishInput() { editing = false; finishComposition(); consumed.clear(); super.onFinishInput() }
+    private val prefs get() = getSharedPreferences("keyboard", MODE_PRIVATE)
     override fun onEvaluateInputViewShown(): Boolean = false
+    private fun toggleLanguage() { finishComposition(); myanmar = !myanmar }
     override fun onEvaluateFullscreenMode(): Boolean = false
     override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
         super.onUpdateSelection(oldSelStart,oldSelEnd,newSelStart,newSelEnd,candidatesStart,candidatesEnd)
@@ -38,8 +100,14 @@ class MyanmarIme : InputMethodService() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val id = event.deviceId to keyCode
         fun handled(): Boolean { consumed.add(id); return true }
+        if (keyCode == KeyEvent.KEYCODE_SPACE && event.isCtrlPressed && event.isShiftPressed && !event.isAltPressed && !event.isMetaPressed) {
+            if (!prefs.getBoolean("global_shortcut", true)) return super.onKeyDown(keyCode,event)
+            if (event.repeatCount == 0 && connected) switchToGboard()
+            return handled()
+        }
+        if (!connected) return super.onKeyDown(keyCode,event)
         if (keyCode == KeyEvent.KEYCODE_SPACE && event.isCtrlPressed && !event.isAltPressed && !event.isMetaPressed) {
-            if (event.repeatCount == 0) { finishComposition(); myanmar = !myanmar; Toast.makeText(this, if (myanmar) "မြန်မာ" else "English", Toast.LENGTH_SHORT).show() }
+            if (event.repeatCount == 0) { toggleLanguage(); Toast.makeText(this, if (myanmar) "မြန်မာ" else "English", Toast.LENGTH_SHORT).show() }
             return handled()
         }
         val ic = currentInputConnection ?: return super.onKeyDown(keyCode,event)
