@@ -17,7 +17,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private val inputs by lazy { getSystemService(InputManager::class.java) }
     private fun refreshStatus() {
-        val names = inputs.inputDeviceIds.mapNotNull { inputs.getInputDevice(it) }.filter { !it.isVirtual && it.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC }.map { it.name }.distinct()
+        val names = inputs.inputDeviceIds.toList().mapNotNull { inputs.getInputDevice(it) }.filter { !it.isVirtual && it.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC }.map { it.name }.distinct()
         status.text = if (names.isEmpty()) "Physical keyboard: Not connected" else "Connected: " + names.joinToString(", ")
     }
     private val listener = object : InputManager.InputDeviceListener {
