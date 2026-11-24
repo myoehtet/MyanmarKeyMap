@@ -1,44 +1,50 @@
 name: Build Myanmar KeyMap APK
-
 on:
   workflow_dispatch:
   push:
     branches: [main]
-
 permissions:
   contents: read
-
 jobs:
   build:
     runs-on: ubuntu-24.04
-
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v5
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Verify Android SDK
-        run: |
-          echo "Android SDK: $ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms"
-          ls "$ANDROID_HOME/build-tools"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
-      - name: Build APK
-        run: gradle --no-daemon assembleDebug --stacktrace
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Restore private signing key
+        env:
+          KEY_B64: ${{ secrets.MM_KEYSTORE_BASE64 }}
+          MM_KEYSTORE_PASSWORD: ${{ secrets.MM_KEYSTORE_PASSWORD }}
+        run: |
+          set -eu
+          test -n "$KEY_B64" && test -n "$MM_KEYSTORE_PASSWORD" || { echo 'Configure both signing secrets first'; exit 1; }
+          umask 077
+          printf '%s' "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/myanmarkeymap.p12"
+          keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/myanmarkeymap.p12" -storepass:env MM_KEYSTORE_PASSWORD -alias myanmarkeymap >/dev/null
+      - name: Build signed release
+        env:
+          MM_KEYSTORE_PATH: ${{ runner.temp }}/myanmarkeymap.p12
+          MM_KEYSTORE_PASSWORD: ${{ secrets.MM_KEYSTORE_PASSWORD }}
+        run: gradle --no-daemon assembleRelease --stacktrace
+      - name: Verify and name APK
+        run: |
+          set -eu
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | sed -n '1,8p'
+          mkdir -p dist
+          cp "$APK" dist/MyanmarKeyMap-v0.3.3.apk
+      - uses: actions/upload-artifact@v4
         with:
-          name: MyanmarKeyMap-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: MyanmarKeyMap-v0.3.3-Release
+          path: dist/MyanmarKeyMap-v0.3.3.apk
           if-no-files-found: error
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/myanmarkeymap.p12"
