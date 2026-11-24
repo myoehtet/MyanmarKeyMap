@@ -37,7 +37,7 @@ class MainActivity : Activity() {
         fun heading(t:String, size:Float=18f) { layout.addView(TextView(this).apply { text=t; textSize=size; setTextColor(Color.parseColor("#192338")); setTypeface(null,Typeface.BOLD); setPadding(0,dp(18),0,dp(8)) }) }
         fun note(t:String) { layout.addView(TextView(this).apply { text=t; textSize=15f; setTextColor(Color.parseColor("#46536B")); setPadding(0,0,0,dp(8)) }) }
         fun button(t:String, action:()->Unit) { layout.addView(Button(this).apply { text=t; isAllCaps=false; setOnClickListener { action() } }) }
-        heading("Myanmar KeyMap",28f); note("Version 0.3.2  •  Myanmar3\nPhysical keyboard only · Offline")
+        heading("Myanmar KeyMap",28f); note("Version 0.3.3  •  Myanmar3\nPhysical keyboard only · Offline")
         heading("01  Connection & keyboard setup")
         status = TextView(this).apply { textSize=16f; setTextColor(Color.parseColor("#245A45")); setPadding(0,dp(8),0,dp(8)) }; layout.addView(status)
         layout.addView(Switch(this).apply { text="Return to Gboard on disconnect"; setTextColor(Color.parseColor("#192338")); isChecked=prefs.getBoolean("return_gboard",true); setOnCheckedChangeListener { _,v -> prefs.edit().putBoolean("return_gboard",v).apply() } })
