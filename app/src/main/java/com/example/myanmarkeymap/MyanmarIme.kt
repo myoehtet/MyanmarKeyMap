@@ -98,14 +98,13 @@ class MyanmarIme : InputMethodService() {
         KeyEvent.KEYCODE_PERIOD -> '.'; KeyEvent.KEYCODE_SLASH -> '/'; else -> null
     }
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (!connected || event.device?.let { !it.isVirtual && it.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC } != true) return super.onKeyDown(keyCode,event)
         val id = event.deviceId to keyCode
         fun handled(): Boolean { consumed.add(id); return true }
         if (keyCode == KeyEvent.KEYCODE_SPACE && event.isCtrlPressed && event.isShiftPressed && !event.isAltPressed && !event.isMetaPressed) {
-            if (!prefs.getBoolean("global_shortcut", true)) return super.onKeyDown(keyCode,event)
-            if (event.repeatCount == 0 && connected) switchToGboard()
+            if (event.repeatCount == 0) switchToGboard()
             return handled()
         }
-        if (!connected) return super.onKeyDown(keyCode,event)
         if (keyCode == KeyEvent.KEYCODE_SPACE && event.isCtrlPressed && !event.isAltPressed && !event.isMetaPressed) {
             if (event.repeatCount == 0) { toggleLanguage(); Toast.makeText(this, if (myanmar) "မြန်မာ" else "English", Toast.LENGTH_SHORT).show() }
             return handled()
